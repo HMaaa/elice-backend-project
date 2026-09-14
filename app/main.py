@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
+import app.models  # noqa: F401  모든 모델을 Base.metadata 에 등록한다
 from app.api.v1.router import api_router
 from app.core.config import get_settings
-from app.core.database import engine
+from app.core.database import Base, engine
 from app.core.exceptions import (
     DomainError,
     domain_error_handler,
@@ -19,7 +20,13 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 없는 테이블만 만든다. 이미 있으면 건드리지 않으므로 재시작해도 안전하다.
+    # 인덱스·CHECK 제약·생성 컬럼까지 모델 정의 그대로 생성된다.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     yield
+
     await get_redis().aclose()
     await engine.dispose()
 
